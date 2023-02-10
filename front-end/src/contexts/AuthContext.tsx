@@ -1,7 +1,8 @@
-import { api } from "@/services/api";
-import Router from "next/router";
 import { createContext, ReactNode, useEffect, useState } from "react";
 import { setCookie, parseCookies, destroyCookie } from "nookies"
+import { api } from "@/services/apiClient";
+import Router from "next/router";
+
 
 type SignInCredentials = {
   email: string;
@@ -9,7 +10,8 @@ type SignInCredentials = {
 }
 
 type AuthContextData = {
-  signIn(credentials : SignInCredentials): Promise<void>;
+  signIn: (credentials : SignInCredentials) => Promise<void>;
+  signOut: () => void;
   user: User;
   isAuthenticated: boolean;
 }
@@ -27,23 +29,46 @@ type User = {
 
 export const AuthContext = createContext({} as AuthContextData);
 
+//BroadcastChannel serve para fazer logout em todas as paginas da minha aplicacao
+let authChannel: BroadcastChannel;
+
+
 export function signOut() {
   //deslogar o usuario
   destroyCookie(undefined, 'nextauth.token')
   destroyCookie(undefined, 'nextauth.refreshToken')
+
+  authChannel.postMessage('signOut')
   //redireciono o usuario
   Router.push('/');
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  //meu contexto exporta duas infos: se esta autenticado e a funcao de autenticacao com os dois parametro SignInCredentials  
-  
+  //meu contexto exporta duas infos: se esta autenticado e a funcao de autenticacao com os dois parametro SignInCredentials    
 
   //depois que a minha requisicao eh feita e meu usuario eh validado, guardo as informacoes num estado, para que toda a minha aplicacao tenha as infos
   const [user, setUser] = useState<User>();
 
   //essas duas exclamacoes verifica se esta vazio e retorna um boolean
   const isAuthenticated = !!user;
+
+    useEffect(() => {
+    authChannel = new BroadcastChannel("auth");
+    
+    authChannel.onmessage = (message) => {
+      switch (message.data) {
+        case "signOut":
+          authChannel.close();
+          window.location.replace("http://localhost:3000/");
+          break;
+        case "signIn":
+          window.location.replace("http://localhost:3000/dashboard");
+          break;
+        default:
+          break;
+      }
+    };
+  }, []);
 
 
   //toda vez q o usuario acessar a aplicacao pela primeira vez precio carregar a informacao do usuario novamente
@@ -100,6 +125,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       //redireciono o usuario para a rota que eu quero
       Router.push("/dashboard");
 
+      // authChannel.postMessage("singIn");
+
 
     } catch (err) {
       console.log(err)
@@ -107,7 +134,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   return (
-    <AuthContext.Provider value={{  signIn, isAuthenticated, user }}>
+    <AuthContext.Provider value={{  signIn, signOut, isAuthenticated, user }}>
       {children}
     </AuthContext.Provider>
   )
